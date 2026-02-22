@@ -1,12 +1,17 @@
-# Equivariant CNNs for Rotated MNIST Classification
+# Steerable CNNs on Rotated MNIST
 
-This project explores the use of **group-equivariant convolutional neural networks** (G-CNNs) for classifying handwritten digits under arbitrary rotations. Using the [`e2cnn`](https://github.com/QUVA-Lab/e2cnn) library, we implement and compare models with various symmetry groups — including cyclic (Cₙ) and dihedral (Dₙ) groups — against a standard baseline CNN on the rotated MNIST benchmark.
+A study of rotation-equivariant convolutional neural networks using the `e2cnn` library, trained and evaluated on MNIST and Rotated MNIST datasets.
 
 ---
 
-## Motivation
+## Overview
 
-Standard CNNs learn independent filters for each orientation of a pattern, which is both parameter-inefficient and brittle when test images are rotated. Group-equivariant CNNs address this by enforcing symmetry constraints directly in the architecture: a pattern learned at one orientation is automatically shared across all orientations via weight-sharing. This makes them more data-efficient and significantly more robust to rotation.
+This project investigates how **steerable CNNs** — networks built with group-equivariant convolutions — compare to standard CNNs when tested on rotated images. By encoding symmetry priors directly into the network architecture, steerable CNNs generalize to rotations without needing explicit data augmentation.
+
+**Key concepts:**
+- **Equivariance** — rotating the input produces a corresponding rotation of the feature maps, rather than arbitrary changes.
+- **Invariance** — the final prediction is unchanged regardless of input rotation, achieved here via group pooling.
+- **Regular representation** — for a group of order `|G|`, a feature map with `k` regular fields has `k × |G|` channels total.
 
 ---
 
@@ -21,17 +26,13 @@ Both models were trained on a rotated MNIST dataset and evaluated on a held-out 
 | Baseline CNN | 26.0% |
 | C4-Invariant CNN | **96.3%** |
 
-The C4 model achieves nearly 4× the accuracy of the baseline, demonstrating the power of baking rotational symmetry into the architecture.
-
-The contrast in training behavior is stark — the baseline CNN fails to converge on rotated data, while the C4-invariant model converges smoothly and rapidly:
+The C4 model achieves nearly 4× the accuracy of the baseline. The contrast in training behavior is stark — the baseline CNN fails to converge on rotated data, while the C4-invariant model converges smoothly and rapidly:
 
 | Baseline CNN | C4-Invariant CNN |
 |---|---|
 | ![Baseline training loss](https://raw.githubusercontent.com/egeozgul/Steerable_CNNs/main/Figures/Figure1.png) | ![C4 training loss](https://raw.githubusercontent.com/egeozgul/Steerable_CNNs/main/Figures/Figure2.png) |
 
 ### C4 Model Accuracy by Rotation Angle
-
-To probe where the C4 model struggles, it was evaluated separately on each 90° rotation of the standard MNIST test set:
 
 | Rotation | Accuracy |
 |---|---|
@@ -40,9 +41,11 @@ To probe where the C4 model struggles, it was evaluated separately on each 90° 
 | 180° | 63.5% |
 | 270° | 74.1% |
 
+A truly C4-invariant network should produce identical accuracy at all four orientations since these are exactly the symmetries it encodes — deviations here reflect the gap between theoretical and practical invariance.
+
 ### Symmetry Group Comparison
 
-A unified `EquivariantCNN` class was used to train and evaluate models across six different symmetry groups. Each model was evaluated on both a custom dataset matching its symmetry and the standard rotated MNIST benchmark:
+A unified `EquivariantCNN` class was used to train and evaluate models across six symmetry groups, each trained with matching data augmentation:
 
 | Model | Symmetry | Custom Dataset | Rotated MNIST |
 |---|---|---|---|
@@ -53,7 +56,7 @@ A unified `EquivariantCNN` class was used to train and evaluate models across si
 | C8 | 45° rotations | 99.01% | 42.82% |
 | D8 | 45° rotations + reflections | 97.01% | 97.24% |
 
-**Key takeaway:** Models with reflection symmetry (Dₙ groups) generalize well to the rotated MNIST benchmark. Pure cyclic models (C2, C8) achieve high accuracy on their custom datasets but fail to generalize, suggesting that reflections are a crucial inductive bias for this task. D4 and D8 match or exceed the original C4 model on rotated MNIST.
+**Key takeaway:** Dₙ groups (rotation + reflection) generalize well to the rotated MNIST benchmark. Pure cyclic Cₙ models score high on their custom datasets but fail to generalize, indicating that reflections are a crucial inductive bias for this task.
 
 ### Training Loss Curves by Symmetry Group
 
@@ -68,66 +71,73 @@ A unified `EquivariantCNN` class was used to train and evaluate models across si
 
 ---
 
-## Project Structure
+## Model Architectures
 
+### Baseline CNN
+A standard CNN with no symmetry constraints — four convolutional blocks (64 channels, 5×5 kernels, stride 2), followed by two linear layers for classification.
+
+### C4-Invariant CNN
+Built with `e2cnn`, equivariant under the cyclic group C4 (90° rotations). Uses 64 regular representations of C4 as hidden features, with `GroupPooling` at the end to collapse the group dimension into rotation-invariant scalars.
+
+### General Equivariant CNN
+A flexible architecture controlled by two parameters:
+
+```python
+EquivariantCNN(N=4, reflections=True)   # D4 — 90° rotations + reflections
+EquivariantCNN(N=4, reflections=False)  # C4 — 90° rotations only
+EquivariantCNN(N=8, reflections=True)   # D8 — 45° rotations + reflections
 ```
-.
-├── README.md
-├── equivariant_cnn.py       # EquivariantCNN model definition (Cn and Dn)
-├── data_utils.py            # prepare_mnist() — data loading and augmentation
-├── train.py                 # Training loop
-└── evaluate.py              # Evaluation scripts
-```
+
+| Group | N | Reflections |
+|---|---|---|
+| D1 | 1 | ✓ |
+| C2 | 2 | ✗ |
+| D2 | 2 | ✓ |
+| D4 | 4 | ✓ |
+| C8 | 8 | ✗ |
+| D8 | 8 | ✓ |
 
 ---
 
-## Model Architecture
+## Datasets
 
-The core model is `EquivariantCNN`, which accepts two parameters:
-- `N` — the rotation order (e.g., 4 for 90° rotational symmetry)
-- `reflections` — whether to include reflection symmetry (Dₙ vs. Cₙ)
-
-It consists of four equivariant convolutional blocks (each with `R2Conv` → `InnerBatchNorm` → `ReLU`), followed by spatial average pooling, group pooling to achieve invariance, and two fully connected layers for classification.
-
-```python
-model = EquivariantCNN(N=4, reflections=True)   # D4
-model = EquivariantCNN(N=4, reflections=False)  # C4
-model = EquivariantCNN(N=8, reflections=True)   # D8
-```
+| Dataset | Description |
+|---|---|
+| MNIST | Standard 28×28 handwritten digits, used for training |
+| Rotated MNIST | Continuously rotated MNIST (U. Montreal), used for evaluation |
+| 90°-rotated MNIST | MNIST with deterministic 0°/90°/180°/270° rotations, used to test discrete invariance |
 
 ---
 
-## Data Preparation
-
-The `prepare_mnist` function generates training and evaluation dataloaders from the standard MNIST dataset, applying rotations and optional reflections to match the target symmetry group:
+## Usage
 
 ```python
-train_loader, eval_loader = prepare_mnist(
-    batch_size=64,
-    rotation_order=4,
-    include_reflections=True
-)
+# Train a C4-invariant model
+model = C4InvariantCNN().to(device)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+train(train_loader, model, optimizer, epochs=5)
+evaluate(eval_rot_loader, model)
+
+# Train with a different symmetry group
+model_d8 = EquivariantCNN(N=8, reflections=True).to(device)
+optimizer = optim.Adam(model_d8.parameters(), lr=0.001)
+train(train_loader, model_d8, optimizer, epochs=5)
+evaluate(eval_rot_loader, model_d8)
 ```
 
 ---
 
 ## Dependencies
 
-- Python 3.8+
-- PyTorch
-- [e2cnn](https://github.com/QUVA-Lab/e2cnn)
-- torchvision
-
-Install dependencies:
-
 ```bash
-pip install torch torchvision e2cnn
+pip install torch torchvision e2cnn numpy matplotlib
 ```
 
 ---
 
 ## References
 
-- Weiler & Cesa, *General E(2)-Equivariant Steerable CNNs*, NeurIPS 2019
-- Cohen & Welling, *Group Equivariant Convolutional Networks*, ICML 2016
+- Weiler & Cesa, [General E(2)-Equivariant Steerable CNNs](https://arxiv.org/abs/1911.08251), NeurIPS 2019
+- Cohen & Welling, [Group Equivariant Convolutional Networks](https://arxiv.org/abs/1602.07576), ICML 2016
 - [e2cnn library](https://github.com/QUVA-Lab/e2cnn)
+- [Rotated MNIST dataset](http://www.iro.umontreal.ca/~lisa/icml2007data/)
