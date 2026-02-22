@@ -56,6 +56,10 @@ A unified `EquivariantCNN` class was used to train and evaluate models across si
 | C8 | 45° rotations | 99.01% | 42.82% |
 | D8 | 45° rotations + reflections | 97.01% | 97.24% |
 
+> **Custom Dataset** — Generated from standard MNIST using `prepare_mnist`, applying discrete rotations and reflections that match each model's symmetry group. Measures how well a model learned its specific symmetry.
+>
+> **Rotated MNIST** — A standard benchmark (U. Montreal) where digits are rotated by continuous, arbitrary angles. Used to evaluate real-world generalization across all models under the same conditions.
+
 **Key takeaway:** Dₙ groups (rotation + reflection) generalize well to the rotated MNIST benchmark. Pure cyclic Cₙ models score high on their custom datasets but fail to generalize, indicating that reflections are a crucial inductive bias for this task.
 
 ### Training Loss Curves by Symmetry Group
